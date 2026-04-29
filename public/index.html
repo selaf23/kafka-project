@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kafka Real-time Demo</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      color: #38bdf8;
+      margin-bottom: 8px;
+    }
+
+    header p {
+      color: #94a3b8;
+    }
+
+    .status-bar {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+
+    .status-item {
+      background: #1e293b;
+      padding: 12px 20px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+    }
+
+    .status-dot.connected {
+      background: #22c55e;
+    }
+
+    .status-dot.connecting {
+      background: #eab308;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      color: #38bdf8;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .metric {
+      background: #0f172a;
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .metric-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #38bdf8;
+    }
+
+    .metric-label {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    .messages-container {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .message-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .message-item {
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 8px;
+      border-left: 3px solid #38bdf8;
+    }
+
+    .message-item.kafka {
+      border-left-color: #22c55e;
+    }
+
+    .message-item.system {
+      border-left-color: #eab308;
+    }
+
+    .message-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+
+    .message-content {
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .send-form {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .send-form input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 12px;
+      color: #e2e8f0;
+      font-size: 1rem;
+    }
+
+    .send-form input:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+
+    .send-form button {
+      background: #38bdf8;
+      color: #0f172a;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .send-form button:hover {
+      background: #7dd3fc;
+    }
+
+    .send-form button:disabled {
+      background: #475569;
+      cursor: not-allowed;
+    }
+
+    .quick-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .quick-actions button {
+      background: #334155;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .quick-actions button:hover {
+      background: #475569;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #64748b;
+      padding: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Kafka Real-time Demo</h1>
+      <p>WebSocket client connecting to Kafka producer/consumer</p>
+    </header>
+
+    <div class="status-bar">
+      <div class="status-item">
+        <span class="status-dot" id="wsStatus"></span>
+        <span>WebSocket: <span id="wsStatusText">Disconnected</span></span>
+      </div>
+      <div class="status-item">
+        <span>Client ID: <span id="clientId">-</span></span>
+      </div>
+      <div class="status-item">
+        <span>Uptime: <span id="uptime">0s</span></span>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <div class="card">
+        <h2>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+          Metrics
+        </h2>
+        <div class="metrics-grid">
+          <div class="metric">
+            <div class="metric-value" id="messagesSent">0</div>
+            <div class="metric-label">Messages Sent</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="messagesReceived">0</div>
+            <div class="metric-label">Messages Received</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="messagesPerSecond">0</div>
+            <div class="metric-label">Msg/sec</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="latency">0ms</div>
+            <div class="metric-label">Latency</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          Send Message
+        </h2>
+        <form class="send-form" id="sendForm">
+          <input type="text" id="messageInput" placeholder="Enter your message..." autocomplete="off" />
+          <button type="submit" id="sendButton">Send</button>
+        </form>
+        <div class="quick-actions">
+          <button type="button" data-type="ping">Ping</button>
+          <button type="button" data-type="alert">Alert</button>
+          <button type="button" data-type="event">Event</button>
+          <button type="button" data-type="notification">Notification</button>
+        </div>
+      </div>
+
+      <div class="card messages-container">
+        <h2>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          Real-time Messages
+        </h2>
+        <div class="message-list" id="messageList">
+          <div class="empty-state">No messages yet. Connect to start receiving.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="9" y1="21" x2="9" y2="9"/>
+          </svg>
+          Connection Stats
+        </h2>
+        <div class="metrics-grid">
+          <div class="metric">
+            <div class="metric-value" id="activeConnections">0</div>
+            <div class="metric-label">Active Connections</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="totalMessages">0</div>
+            <div class="metric-label">Total Processed</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="messageCount">0</div>
+            <div class="metric-label">Message Count</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="errors">0</div>
+            <div class="metric-label">Errors</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const WS_URL = new URLSearchParams(window.location.search).get('ws') || 'ws://localhost:3000';
+
+    class KafkaWebSocketDemo {
+      constructor() {
+        this.ws = null;
+        this.clientId = null;
+        this.metrics = {
+          messagesSent: 0,
+          messagesReceived: 0,
+          messagesPerSecond: 0,
+          latency: 0,
+          activeConnections: 0,
+          totalMessages: 0,
+          messageCount: 0,
+          errors: 0,
+        };
+        this.latencies = [];
+        this.startTime = Date.now();
+        this.lastMessageTime = Date.now();
+        this.messageRateWindow = [];
+        this.connect();
+        this.bindEvents();
+        this.startUptimeTimer();
+      }
+
+      connect() {
+        this.updateStatus('connecting');
+        this.ws = new WebSocket(WS_URL);
+
+        this.ws.onopen = () => {
+          this.updateStatus('connected');
+          console.log('WebSocket connected');
+        };
+
+        this.ws.onmessage = (event) => {
+          this.handleMessage(event.data);
+        };
+
+        this.ws.onclose = () => {
+          this.updateStatus('disconnected');
+          this.clientId = null;
+          setTimeout(() => this.connect(), 3000);
+        };
+
+        this.ws.onerror = (error) => {
+          this.metrics.errors++;
+          console.error('WebSocket error:', error);
+        };
+      }
+
+      handleMessage(data) {
+        try {
+          const message = JSON.parse(data);
+          const latency = Date.now() - message.timestamp;
+
+          if (message.type === 'status' && message.payload?.clientId) {
+            this.clientId = message.payload.clientId;
+            document.getElementById('clientId').textContent = this.clientId;
+          }
+
+          if (message.type === 'system' && message.payload?.stats) {
+            const stats = message.payload.stats;
+            document.getElementById('activeConnections').textContent = stats.activeConnections;
+            document.getElementById('totalMessages').textContent = stats.totalMessagesProcessed;
+            document.getElementById('messageCount').textContent = stats.totalMessagesProcessed;
+            document.getElementById('messagesPerSecond').textContent = stats.messagesPerSecond;
+          } else if (message.type === 'kafka' || message.type === 'system') {
+            this.metrics.messagesReceived++;
+            this.addMessageToList(message, message.type);
+            this.updateMessageRate();
+          }
+
+          this.updateMetrics();
+        } catch (error) {
+          this.metrics.errors++;
+        }
+      }
+
+      updateLatencyStats(latency) {
+        this.latencies.push(latency);
+        if (this.latencies.length > 100) {
+          this.latencies.shift();
+        }
+        const avg = Math.round(this.latencies.reduce((a, b) => a + b, 0) / this.latencies.length);
+        this.metrics.latency = avg;
+        document.getElementById('latency').textContent = `${avg}ms`;
+      }
+
+      updateMessageRate() {
+        const now = Date.now();
+        this.messageRateWindow.push(now);
+
+        this.messageRateWindow = this.messageRateWindow.filter(
+          t => now - t < 1000
+        );
+
+        this.metrics.messagesPerSecond = this.messageRateWindow.length;
+        document.getElementById('messagesPerSecond').textContent = this.metrics.messagesPerSecond;
+      }
+
+      addMessageToList(message, type) {
+        const list = document.getElementById('messageList');
+        const emptyState = list.querySelector('.empty-state');
+        if (emptyState) {
+          emptyState.remove();
+        }
+
+        const item = document.createElement('div');
+        item.className = `message-item ${type}`;
+        item.innerHTML = `
+          <div class="message-meta">
+            <span>${message.origin}</span>
+            <span>${new Date(message.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div class="message-content">${JSON.stringify(message.payload, null, 2)}</div>
+        `;
+
+        list.insertBefore(item, list.firstChild);
+
+        while (list.children.length > 50) {
+          list.removeChild(list.lastChild);
+        }
+      }
+
+      send(payload) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({
+            type: 'message',
+            payload,
+            timestamp: Date.now(),
+            clientId: this.clientId,
+          }));
+          this.metrics.messagesSent++;
+          this.updateMetrics();
+        }
+      }
+
+      bindEvents() {
+        document.getElementById('sendForm').addEventListener('submit', (e) => {
+          e.preventDefault();
+          const input = document.getElementById('messageInput');
+          const message = input.value.trim();
+          if (message) {
+            this.send({ text: message, id: Date.now() });
+            input.value = '';
+          }
+        });
+
+        document.querySelectorAll('.quick-actions button').forEach(button => {
+          button.addEventListener('click', () => {
+            const type = button.dataset.type;
+            const payloads = {
+              ping: { type: 'ping', data: { timestamp: Date.now() } },
+              alert: { type: 'alert', data: { level: 'warning', message: 'Alert triggered' } },
+              event: { type: 'event', data: { name: 'button_click', value: Math.random() } },
+              notification: { type: 'notification', data: { title: 'New Update', body: 'Data synced successfully' } },
+            };
+            this.send(payloads[type]);
+          });
+        });
+      }
+
+      updateStatus(status) {
+        const dot = document.getElementById('wsStatus');
+        const text = document.getElementById('wsStatusText');
+        dot.className = `status-dot ${status}`;
+        text.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+      }
+
+      updateMetrics() {
+        document.getElementById('messagesSent').textContent = this.metrics.messagesSent;
+        document.getElementById('messagesReceived').textContent = this.metrics.messagesReceived;
+        document.getElementById('errors').textContent = this.metrics.errors;
+      }
+
+      startUptimeTimer() {
+        setInterval(() => {
+          const uptime = Math.floor((Date.now() - this.startTime) / 1000);
+          document.getElementById('uptime').textContent = `${uptime}s`;
+        }, 1000);
+      }
+    }
+
+    new KafkaWebSocketDemo();
+  </script>
+</body>
+</html>
